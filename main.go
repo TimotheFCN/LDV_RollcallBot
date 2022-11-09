@@ -188,7 +188,7 @@ func schedule(lesson Lesson) {
 	//Schedule the checkopen until the lesson ends or the rollCall is opened
 	id := xid.New()
 	err = scheduler.AddWithID(id.String(), &tasks.Task{
-		Interval:   time.Duration(time.Second * 2),
+		Interval:   time.Duration(time.Minute * 2),
 		StartAfter: lesson.StartTime,
 		TaskFunc: func() error {
 			if checkOpen(lesson) {
