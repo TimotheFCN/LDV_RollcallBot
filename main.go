@@ -45,7 +45,7 @@ func isAlreadyListed(lesson Lesson) bool {
 func main() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		println("Error loading .env file, trying to use ENV variables")
 	}
 
 	scheduler = tasks.New()
@@ -188,23 +188,24 @@ func schedule(lesson Lesson) {
 	//Schedule the checkopen until the lesson ends or the rollCall is opened
 	id := xid.New()
 	err = scheduler.AddWithID(id.String(), &tasks.Task{
-		Interval:   time.Duration(time.Minute * 2),
+		Interval:   time.Duration(time.Second * 2),
 		StartAfter: lesson.StartTime,
 		TaskFunc: func() error {
 			if checkOpen(lesson) {
 				scheduler.Del(id.String())
-				println("[INFO] Task " + lesson.Description + " removed")
+				println("[INFO] Task " + lesson.Description + " removed, rollcall opened")
 				return nil
 			}
 			//if the lesson is finished, remove the task
 			if time.Now().After(lesson.EndTime) {
 				scheduler.Del(id.String())
-				println("[INFO] Task " + lesson.Description + " removed")
+				println("[INFO] Task " + lesson.Description + " removed, lesson finished")
 				return nil
 			}
 			return nil
 		},
 	})
+	println("[INFO] Task " + lesson.Description + " scheduled")
 	logError(err)
 }
 
@@ -247,8 +248,11 @@ func checkOpen(lesson Lesson) bool {
 	defer resp.Body.Close()
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	logError(err)
-	//If the rollCall is opened, the button will be disabled
-
+	//Check if the rollcall is already validated
+	checkValidated := doc.Find("#body_presence > div").Text()
+	if strings.Contains(checkValidated, "Vous avez été noté présent") {
+		return true
+	}
 	checkopen := doc.Find("#set-presence").Text()
 	if checkopen != "" {
 		println("[INFO] rollCall is open for " + lesson.Description)
