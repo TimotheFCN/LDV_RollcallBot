@@ -7,7 +7,7 @@ import (
 	"github.com/madflojo/tasks"
 	"github.com/rs/xid"
 	"io"
-	"log"
+	log2 "log"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -33,6 +33,10 @@ type Lesson struct {
 	isOpen      bool
 }
 
+func log(message string) {
+	println(time.Now().Format("02-01 15:04:05") + " [INFO] " + message)
+}
+
 func isAlreadyListed(lesson Lesson) bool {
 	for _, l := range lessonList {
 		if l.StartTime == lesson.StartTime {
@@ -45,7 +49,7 @@ func isAlreadyListed(lesson Lesson) bool {
 func main() {
 	err := godotenv.Load()
 	if err != nil {
-		println("Error loading .env file, trying to use ENV variables")
+		log(".env file not found, trying to use env variables")
 	}
 
 	scheduler = tasks.New()
@@ -84,12 +88,12 @@ func main() {
 func logError(err error) {
 	if err != nil {
 		print("[ERROR] ")
-		log.Fatal(err)
+		log2.Fatal(err)
 	}
 }
 
 func authCookies() {
-	println("[INFO] Getting auth cookies")
+	log("Getting auth cookies")
 	samlLink := func() string {
 		//Get SAML Link from ajax
 		resp, err := client.PostForm(baseURL+"/ajax.inc.php", url.Values{"act": {"ident_analyse"}, "login": {login}})
@@ -132,7 +136,7 @@ func authCookies() {
 	//print the body to see if it worked
 	_, err = io.ReadAll(resp.Body)
 	logError(err)
-	println("[INFO] Authenticated")
+	log("Authenticated")
 }
 
 func getCalendar() {
@@ -171,7 +175,7 @@ func getCalendar() {
 			go schedule(lesson)
 		}
 	}
-	println("[INFO] Calendar updated")
+	log("Calendar updated")
 }
 
 func schedule(lesson Lesson) {
@@ -193,19 +197,19 @@ func schedule(lesson Lesson) {
 		TaskFunc: func() error {
 			if checkOpen(lesson) {
 				scheduler.Del(id.String())
-				println("[INFO] Task " + lesson.Description + " removed, rollcall opened")
+				log("Task " + lesson.Description + " removed, rollcall opened")
 				return nil
 			}
 			//if the lesson is finished, remove the task
 			if time.Now().After(lesson.EndTime) {
 				scheduler.Del(id.String())
-				println("[INFO] Task " + lesson.Description + " removed, lesson finished")
+				log("Task " + lesson.Description + " removed, lesson finished")
 				return nil
 			}
 			return nil
 		},
 	})
-	println("[INFO] Task " + lesson.Description + " scheduled")
+	log("Task " + lesson.Description + " scheduled")
 	logError(err)
 }
 
@@ -241,13 +245,19 @@ func getrollCallURl(lesson Lesson) string {
 }
 
 func checkOpen(lesson Lesson) bool {
-	println("[INFO] Checking if rollCall is open for " + lesson.Description)
+	log("Checking if rollCall is open for " + lesson.Description)
 	//Check if the rollCall is opened
 	resp, err := client.Get(baseURL + lesson.rollCallURL)
 	logError(err)
 	defer resp.Body.Close()
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	logError(err)
+	//check if the auth is still valid
+	el := doc.Find("#formWrapper > div.forget-password")
+	if el.Nodes != nil || len(el.Nodes) > 0 {
+		log("Token expired, reauthenticating")
+		authCookies()
+	}
 	//Check if the rollcall is already validated
 	checkValidated := doc.Find("#body_presence > div").Text()
 	if strings.Contains(checkValidated, "Vous avez été noté présent") {
@@ -255,7 +265,7 @@ func checkOpen(lesson Lesson) bool {
 	}
 	checkopen := doc.Find("#set-presence").Text()
 	if checkopen != "" {
-		println("[INFO] rollCall is open for " + lesson.Description)
+		log("Roll call is open for " + lesson.Description)
 		lesson.isOpen = true
 		sendNotification(lesson)
 	}
@@ -283,7 +293,7 @@ func reAuth() {
 	logError(err)
 	el := doc.Find("#formWrapper > div.forget-password")
 	if el.Nodes != nil || len(el.Nodes) > 0 {
-		println("[INFO] Token expired, reauthenticating")
+		log("Token expired, reauthenticating")
 		authCookies()
 	}
 }
