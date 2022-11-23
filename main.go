@@ -24,6 +24,8 @@ var baseURL = "https://www.leonard-de-vinci.net"
 var client http.Client
 var lessonList []Lesson
 
+var debug = false
+
 type Lesson struct {
 	Description string
 	Zoomlink    string
@@ -35,6 +37,11 @@ type Lesson struct {
 
 func log(message string) {
 	println(time.Now().Format("02-01 15:04:05") + " [INFO] " + message)
+}
+func logDebug(message string) {
+	if debug {
+		println(time.Now().Format("02-01 15:04:05") + " [DEBUG] " + message)
+	}
 }
 
 func isAlreadyListed(lesson Lesson) bool {
@@ -58,6 +65,7 @@ func main() {
 	login = os.Getenv("LOGIN")
 	password = os.Getenv("PASSWORD")
 	joinApiUrl = os.Getenv("JOIN_API_URL")
+	debug = os.Getenv("DEBUG") == "true"
 
 	jar, err := cookiejar.New(nil)
 
@@ -68,21 +76,58 @@ func main() {
 	authCookies()
 	getCalendar()
 
-	//run getcalendar every 12 hours
-	ticker := time.NewTicker(time.Hour * 12)
-	quit := make(chan struct{})
-	go func() {
-		for {
-			select {
-			case <-ticker.C:
-				getCalendar()
-			case <-quit:
-				ticker.Stop()
-				return
+	/*	//run getcalendar every 12 hours
+		ticker := time.NewTicker(time.Hour * 12)
+		quit := make(chan struct{})
+		go func() {
+			for {
+				select {
+				case <-ticker.C:
+					getCalendar()
+				case <-quit:
+					ticker.Stop()
+					return
+				}
 			}
-		}
-	}()
-	<-quit //wait for the goroutine to finish
+		}()
+		<-quit //wait for the goroutine to finish*/
+
+	//run getcalendar at 05:00 and 12:00 every day
+	_, err = scheduler.Add(&tasks.Task{
+		StartAfter: time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day()+1, 5, 0, 0, 0, time.Local),
+		Interval:   time.Duration(24) * time.Hour,
+		TaskFunc: func() error {
+			getCalendar()
+			return nil
+		},
+	})
+	logDebug("Added task to get calendar at 05:00")
+	logError(err)
+	_, err = scheduler.Add(&tasks.Task{
+		StartAfter: time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day()+1, 12, 00, 0, 0, time.Local),
+		Interval:   time.Duration(24) * time.Hour,
+		TaskFunc: func() error {
+			getCalendar()
+			return nil
+		},
+	})
+	logDebug("Added task to get calendar at 12:00")
+	logError(err)
+
+	//run getcalendar tomorrow at 6:00 (required for the first run because the scheduler runs the task at the next interval)
+	_, err = scheduler.Add(&tasks.Task{
+		StartAfter: time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day()+1, 6, 00, 00, 0, time.Local),
+		RunOnce:    true,
+		Interval:   time.Duration(1) * time.Second,
+		TaskFunc: func() error {
+			getCalendar()
+			return nil
+		},
+	})
+	logError(err)
+
+	//loop forever
+	select {}
 }
 
 func logError(err error) {
@@ -154,7 +199,8 @@ func getCalendar() {
 		logError(err)
 		defer ical.Body.Close()
 		//Parse the ical
-		start, end := time.Now(), time.Now().Add(24*time.Hour)
+		//start now and end at 00:00:00
+		start, end := time.Now(), time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), 23, 59, 59, 0, time.Local)
 		c := gocal.NewParser(ical.Body)
 		c.Start, c.End = &start, &end
 		c.Parse()
@@ -237,15 +283,18 @@ func getrollCallURl(lesson Lesson) string {
 		if len(row) > 5 {
 			link := strings.TrimSpace(row[4]) //remove spaces
 			if link == lesson.Zoomlink {
+				logDebug("Found rollcall url for " + lesson.Description)
 				return strings.TrimSpace(row[3])
 			}
 		}
 	}
+	logDebug("No rollcall URL found for " + lesson.Description)
 	return ""
 }
 
 func checkOpen(lesson Lesson) bool {
 	log("Checking if rollCall is open for " + lesson.Description)
+	logDebug("URL: " + lesson.rollCallURL)
 	//Check if the rollCall is opened
 	resp, err := client.Get(baseURL + lesson.rollCallURL)
 	logError(err)
