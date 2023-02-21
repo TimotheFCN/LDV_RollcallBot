@@ -1,11 +1,17 @@
 package main
 
 import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	firebase "firebase.google.com/go"
+	"firebase.google.com/go/messaging"
 	"github.com/PuerkitoBio/goquery"
 	"github.com/apognu/gocal"
 	"github.com/joho/godotenv"
 	"github.com/madflojo/tasks"
 	"github.com/rs/xid"
+	"google.golang.org/api/option"
 	"io"
 	log2 "log"
 	"net/http"
@@ -23,6 +29,8 @@ var joinApiUrl string
 var baseURL = "https://www.leonard-de-vinci.net"
 var client http.Client
 var lessonList []Lesson
+var deviceTokens []string
+var fcmClient messaging.Client
 
 var debug = false
 
@@ -52,12 +60,33 @@ func isAlreadyListed(lesson Lesson) bool {
 	}
 	return false
 }
+func getDecodedFireBaseKey() ([]byte, error) {
+
+	fireBaseAuthKey := os.Getenv("FIREBASE_AUTH_KEY")
+
+	decodedKey, err := base64.StdEncoding.DecodeString(fireBaseAuthKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return decodedKey, nil
+}
 
 func main() {
 	err := godotenv.Load()
 	if err != nil {
 		log(".env file not found, trying to use env variables")
 	}
+
+	//Initialize Firebase
+	decodedKey, err := getDecodedFireBaseKey()
+	opt := option.WithCredentialsJSON(decodedKey)
+	app, err := firebase.NewApp(context.Background(), nil, opt)
+	logError(err)
+	ctx := context.Background()
+	tempclient, err := app.Messaging(ctx)
+	fcmClient = *tempclient
+	logError(err)
 
 	scheduler = tasks.New()
 	defer scheduler.Stop()
@@ -66,6 +95,14 @@ func main() {
 	password = os.Getenv("PASSWORD")
 	joinApiUrl = os.Getenv("JOIN_API_URL")
 	debug = os.Getenv("DEBUG") == "true"
+
+	err = json.Unmarshal([]byte(os.Getenv("TOKENS")), &deviceTokens)
+	for _, token := range deviceTokens {
+		log(token)
+	}
+	logError(err)
+
+	sendTestNotification()
 
 	jar, err := cookiejar.New(nil)
 
@@ -322,14 +359,25 @@ func checkOpen(lesson Lesson) bool {
 }
 
 func sendNotification(lesson Lesson) {
-	res, err := client.PostForm(joinApiUrl, url.Values{
-		"text":    {lesson.Description},
-		"title":   {"Appel ouvert"},
-		"icon":    {"https://img.icons8.com/ios-filled/344/attendance-mark.png"},
-		"actions": {"Open MyDevinci"},
+	_, err := fcmClient.SendMulticast(context.Background(), &messaging.MulticastMessage{
+		Notification: &messaging.Notification{
+			Title: "Appel ouvert",
+			Body:  "L'appel est ouvert pour le cours " + lesson.Description,
+		},
+		Tokens: deviceTokens,
 	})
 	logError(err)
-	defer res.Body.Close()
+}
+
+func sendTestNotification() {
+	_, err := fcmClient.SendMulticast(context.Background(), &messaging.MulticastMessage{
+		Notification: &messaging.Notification{
+			Title: "RollcallBot",
+			Body:  "RollcallBot est lancé, bon ski :)",
+		},
+		Tokens: deviceTokens,
+	})
+	logError(err)
 }
 
 // Check if the token is still valid
