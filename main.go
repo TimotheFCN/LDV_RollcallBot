@@ -1,17 +1,13 @@
 package main
 
 import (
-	"context"
+	"crypto/tls"
 	"encoding/base64"
-	"encoding/json"
-	firebase "firebase.google.com/go"
-	"firebase.google.com/go/messaging"
 	"github.com/PuerkitoBio/goquery"
 	"github.com/apognu/gocal"
 	"github.com/joho/godotenv"
 	"github.com/madflojo/tasks"
 	"github.com/rs/xid"
-	"google.golang.org/api/option"
 	"io"
 	log2 "log"
 	"net/http"
@@ -25,12 +21,10 @@ import (
 var scheduler *tasks.Scheduler
 var login string
 var password string
-var joinApiUrl string
+var notifID string
 var baseURL = "https://www.leonard-de-vinci.net"
 var client http.Client
 var lessonList []Lesson
-var deviceTokens []string
-var fcmClient messaging.Client
 
 var debug = false
 
@@ -78,29 +72,13 @@ func main() {
 		log(".env file not found, trying to use env variables")
 	}
 
-	//Initialize Firebase
-	decodedKey, err := getDecodedFireBaseKey()
-	opt := option.WithCredentialsJSON(decodedKey)
-	app, err := firebase.NewApp(context.Background(), nil, opt)
-	logError(err)
-	ctx := context.Background()
-	tempclient, err := app.Messaging(ctx)
-	fcmClient = *tempclient
-	logError(err)
-
 	scheduler = tasks.New()
 	defer scheduler.Stop()
 
 	login = os.Getenv("LOGIN")
 	password = os.Getenv("PASSWORD")
-	joinApiUrl = os.Getenv("JOIN_API_URL")
+	notifID = os.Getenv("NOTIFID")
 	debug = os.Getenv("DEBUG") == "true"
-
-	err = json.Unmarshal([]byte(os.Getenv("TOKENS")), &deviceTokens)
-	for _, token := range deviceTokens {
-		log(token)
-	}
-	logError(err)
 
 	sendTestNotification()
 
@@ -358,7 +336,7 @@ func checkOpen(lesson Lesson) bool {
 	return checkopen != ""
 }
 
-func sendNotification(lesson Lesson) {
+/*func sendNotification(lesson Lesson) {
 	_, err := fcmClient.SendMulticast(context.Background(), &messaging.MulticastMessage{
 		Notification: &messaging.Notification{
 			Title: "Appel ouvert",
@@ -367,17 +345,62 @@ func sendNotification(lesson Lesson) {
 		Tokens: deviceTokens,
 	})
 	logError(err)
+}*/
+
+func sendNotification(lesson Lesson) {
+	targetURL, err := url.Parse("https://alertzy.app/send")
+	logError(err)
+
+	formData := url.Values{}
+	formData.Set("accountKey", notifID)
+	formData.Set("title", "Appel ouvert !")
+	formData.Set("message", lesson.Description)
+
+	req, err := http.NewRequest("POST", targetURL.String(), strings.NewReader(formData.Encode()))
+	logError(err)
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		},
+	}
+
+	resp, err := client.Do(req)
+	logError(err)
+
+	defer resp.Body.Close()
 }
 
 func sendTestNotification() {
-	_, err := fcmClient.SendMulticast(context.Background(), &messaging.MulticastMessage{
-		Notification: &messaging.Notification{
-			Title: "RollcallBot",
-			Body:  "RollcallBot est lancé, bon ski :)",
-		},
-		Tokens: deviceTokens,
-	})
+	targetURL, err := url.Parse("https://alertzy.app/send")
 	logError(err)
+
+	formData := url.Values{}
+	formData.Set("accountKey", notifID)
+	formData.Set("title", "RollCallBot")
+	formData.Set("message", "Prêt à valider, profite bien du ski !")
+
+	req, err := http.NewRequest("POST", targetURL.String(), strings.NewReader(formData.Encode()))
+	logError(err)
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		},
+	}
+
+	resp, err := client.Do(req)
+	logError(err)
+
+	defer resp.Body.Close()
 }
 
 // Check if the token is still valid
