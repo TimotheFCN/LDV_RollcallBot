@@ -80,7 +80,7 @@ func main() {
 	notifID = os.Getenv("NOTIFID")
 	debug = os.Getenv("DEBUG") == "true"
 
-	sendTestNotification()
+	sendMessageNotification("Prêt à valider, bisouuu je manvol")
 
 	jar, err := cookiejar.New(nil)
 
@@ -183,6 +183,11 @@ func authCookies() {
 		logError(err)
 		//Get the SAMLResponse from the form
 		samlResponse, _ := doc.Find("input[name=SAMLResponse]").Attr("value")
+		if samlResponse == "" {
+			log("Authentification failed")
+			sendMessageNotification("Erreur: Informations de connexion incorrectes.")
+			os.Exit(1)
+		}
 		return samlResponse
 	}
 	//Post the SAMLResponse to simpleSAML
@@ -379,14 +384,14 @@ func sendNotification(lesson Lesson) {
 	defer resp.Body.Close()
 }
 
-func sendTestNotification() {
+func sendMessageNotification(message string) {
 	targetURL, err := url.Parse("https://alertzy.app/send")
 	logError(err)
 
 	formData := url.Values{}
 	formData.Set("accountKey", notifID)
 	formData.Set("title", "RollCallBot")
-	formData.Set("message", "Prêt à valider, profite bien du ski !")
+	formData.Set("message", message)
 
 	req, err := http.NewRequest("POST", targetURL.String(), strings.NewReader(formData.Encode()))
 	logError(err)
