@@ -5,7 +5,7 @@ Send a notification when the attendance check is open at ESILV, EMLV and IIM
 
 ## Requirements
 Notifications are sent using [Alertzy](https://alertzy.app/).
-Download the app on your phone (iOS and Android), create an account and get your **account key** in the account tab.
+Download the app on your phone ([iOS](https://apps.apple.com/us/app/alertzy/id1532861710) and [Android](https://play.google.com/store/apps/details?id=notify.me.app)), create an account and get your **account key** in the account tab.
 
 
 ## Usage
