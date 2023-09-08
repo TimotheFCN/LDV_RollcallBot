@@ -193,8 +193,6 @@ func authCookies() {
 	resp, err = client.Get(baseURL + samlLink())
 	logError(err)
 	defer resp.Body.Close()
-	//print the body to see if it worked
-	_, err = io.ReadAll(resp.Body)
 	logError(err)
 	log("Authenticated")
 }
@@ -207,10 +205,16 @@ func getCalendar() {
 		defer resp.Body.Close()
 		doc, err := goquery.NewDocumentFromReader(resp.Body)
 		logError(err)
-		return doc.Find("#main > div:nth-child(3) > div > div > div > header > div > a").AttrOr("href", "error")
+		link := doc.Find("#main > div:nth-child(3) > div:nth-child(3) > div.app-root > div.body > a").AttrOr("href", "error")
+		if link == "error" {
+			log("Error while getting calendar link")
+			return ""
+		}
+		return link
 	}
 	calendar := func() []gocal.Event {
 		ical, err := client.Get(calLink())
+		log("Calendar: " + calLink())
 		logError(err)
 		defer ical.Body.Close()
 		//Parse the ical
