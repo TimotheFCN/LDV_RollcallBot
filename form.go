@@ -117,4 +117,3 @@ func fetchAndSubmitForm(client *http.Client, urlStr string, setValues func(url.V
 	return resp, nil
 }
 
-//This is a test comment
